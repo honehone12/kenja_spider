@@ -24,7 +24,9 @@ async fn url_check_mongo(
         } else if out.http.is_some() {
             http_out.push(out);
         } else {
-            unknown_out.push(out);
+            if !out.original.is_empty() {
+                unknown_out.push(out);
+            }
         }
     }
 

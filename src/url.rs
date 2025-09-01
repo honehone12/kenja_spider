@@ -24,7 +24,7 @@ const SLEEP: Duration = Duration::from_millis(100);
 pub async fn check_url(url_src: UrlSrc, http_client: &HttpClient) -> anyhow::Result<UrlOut> {
     let url = match url_src.url {
         Some(s) => s,
-            None => return Ok(UrlOut{
+        None => return Ok(UrlOut{
             src: url_src.src,
             original: "".to_string(),
             https: None,
