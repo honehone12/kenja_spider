@@ -18,6 +18,7 @@ pub struct UrlOut {
     pub http: Option<String>
 }
 
+const TIMEOUT: Duration = Duration::from_secs(5);
 const SLEEP: Duration = Duration::from_millis(100);
 
 pub async fn check_url(url_src: UrlSrc, http_client: &HttpClient) -> anyhow::Result<UrlOut> {
@@ -33,7 +34,7 @@ pub async fn check_url(url_src: UrlSrc, http_client: &HttpClient) -> anyhow::Res
 
     if url.starts_with("https:") {
         info!("checking {}", url);
-        let res = http_client.get(&url).send().await?;
+        let res = http_client.get(&url).timeout(TIMEOUT).send().await?;
         if res.status() == StatusCode::OK {
             return Ok(UrlOut{
                 src: url_src.src,
@@ -45,7 +46,7 @@ pub async fn check_url(url_src: UrlSrc, http_client: &HttpClient) -> anyhow::Res
     } else if url.starts_with("http:") {
         let tls = url.replace("http:", "https:");
         info!("checking {tls}");
-        let res = http_client.get(&tls).send().await?;
+        let res = http_client.get(&tls).timeout(TIMEOUT).send().await?;
         if res.status() == StatusCode::OK {
             return Ok(UrlOut{
                 src: url_src.src,
@@ -58,7 +59,7 @@ pub async fn check_url(url_src: UrlSrc, http_client: &HttpClient) -> anyhow::Res
         time::sleep(SLEEP).await;
 
         info!("checking {}", url);
-        let res = http_client.get(&url).send().await?;
+        let res = http_client.get(&url).timeout(TIMEOUT).send().await?;
         if res.status() == StatusCode::OK {
             return Ok(UrlOut{
                 src: url_src.src,
