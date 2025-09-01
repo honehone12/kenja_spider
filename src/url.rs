@@ -34,39 +34,42 @@ pub async fn check_url(url_src: UrlSrc, http_client: &HttpClient) -> anyhow::Res
 
     if url.starts_with("https:") {
         info!("checking {}", url);
-        let res = http_client.get(&url).timeout(TIMEOUT).send().await?;
-        if res.status() == StatusCode::OK {
-            return Ok(UrlOut{
-                src: url_src.src,
-                original: url.clone(),
-                https: Some(url),
-                http: None
-            })
+        if let Ok(res) = http_client.get(&url).timeout(TIMEOUT).send().await {
+            if res.status() == StatusCode::OK {
+                return Ok(UrlOut{
+                    src: url_src.src,
+                    original: url.clone(),
+                    https: Some(url),
+                    http: None
+                })
+            }
         }
     } else if url.starts_with("http:") {
         let tls = url.replace("http:", "https:");
         info!("checking {tls}");
-        let res = http_client.get(&tls).timeout(TIMEOUT).send().await?;
-        if res.status() == StatusCode::OK {
-            return Ok(UrlOut{
-                src: url_src.src,
-                original: url.clone(),
-                https: Some(url),
-                http: None
-            })
+        if let Ok(res) = http_client.get(&tls).timeout(TIMEOUT).send().await {
+            if res.status() == StatusCode::OK {
+                return Ok(UrlOut{
+                    src: url_src.src,
+                    original: url.clone(),
+                    https: Some(url),
+                    http: None
+                })
+            }
         }
 
         time::sleep(SLEEP).await;
 
         info!("checking {}", url);
-        let res = http_client.get(&url).timeout(TIMEOUT).send().await?;
-        if res.status() == StatusCode::OK {
-            return Ok(UrlOut{
-                src: url_src.src,
-                original: url.clone(),
-                https: None,
-                http: Some(url)
-            })
+        if let Ok(res) = http_client.get(&url).timeout(TIMEOUT).send().await {
+            if res.status() == StatusCode::OK {
+                return Ok(UrlOut{
+                    src: url_src.src,
+                    original: url.clone(),
+                    https: None,
+                    http: Some(url)
+                })
+            }
         }
     }
 
