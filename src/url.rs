@@ -52,7 +52,7 @@ pub async fn check_url(url_src: UrlSrc, http_client: &HttpClient) -> anyhow::Res
                 return Ok(UrlOut{
                     src: url_src.src,
                     original: url.clone(),
-                    https: Some(url),
+                    https: Some(tls),
                     http: None
                 })
             }

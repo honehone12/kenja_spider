@@ -13,6 +13,5 @@ async fn main() -> anyhow::Result<()> {
     let json = serde_json::to_string_pretty(&clean)?;
     fs::write("unknown.json", json).await?;
 
-
     Ok(())
 } 
