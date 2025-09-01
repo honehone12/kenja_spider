@@ -2,11 +2,12 @@ use std::time::Duration;
 use tokio::time;
 use reqwest::{Client as HttpClient, StatusCode};
 use serde::{Serialize, Deserialize};
+use tracing::info;
 
 #[derive(Serialize, Deserialize)]
 pub struct UrlSrc {
     pub src: String,
-    pub url: String
+    pub url: Option<String>
 }
 
 #[derive(Serialize, Deserialize)]
@@ -20,37 +21,50 @@ pub struct UrlOut {
 const SLEEP: Duration = Duration::from_millis(100);
 
 pub async fn check_url(url_src: UrlSrc, http_client: &HttpClient) -> anyhow::Result<UrlOut> {
-    if url_src.url.starts_with("https:") {
-        let res = http_client.get(&url_src.url).send().await?;
+    let url = match url_src.url {
+        Some(s) => s,
+            None => return Ok(UrlOut{
+            src: url_src.src,
+            original: "".to_string(),
+            https: None,
+            http: None
+        })
+    };
+
+    if url.starts_with("https:") {
+        info!("checking {}", url);
+        let res = http_client.get(&url).send().await?;
         if res.status() == StatusCode::OK {
             return Ok(UrlOut{
                 src: url_src.src,
-                original: url_src.url.clone(),
-                https: Some(url_src.url),
+                original: url.clone(),
+                https: Some(url),
                 http: None
             })
         }
-    } else if url_src.url.starts_with("http:") {
-        let tls = url_src.url.replace("http:", "https:");
+    } else if url.starts_with("http:") {
+        let tls = url.replace("http:", "https:");
+        info!("checking {tls}");
         let res = http_client.get(&tls).send().await?;
         if res.status() == StatusCode::OK {
             return Ok(UrlOut{
                 src: url_src.src,
-                original: url_src.url.clone(),
-                https: Some(url_src.url),
+                original: url.clone(),
+                https: Some(url),
                 http: None
             })
         }
 
         time::sleep(SLEEP).await;
 
-        let res = http_client.get(&url_src.url).send().await?;
+        info!("checking {}", url);
+        let res = http_client.get(&url).send().await?;
         if res.status() == StatusCode::OK {
             return Ok(UrlOut{
                 src: url_src.src,
-                original: url_src.url.clone(),
+                original: url.clone(),
                 https: None,
-                http: Some(url_src.url)
+                http: Some(url)
             })
         }
     }
@@ -59,7 +73,7 @@ pub async fn check_url(url_src: UrlSrc, http_client: &HttpClient) -> anyhow::Res
 
     Ok(UrlOut{
         src: url_src.src,
-        original: url_src.url,
+        original: url,
         https: None,
         http: None
     })
