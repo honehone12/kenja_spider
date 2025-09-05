@@ -17,7 +17,7 @@ pub struct UrlOut {
     pub http: Option<String>
 }
 
-const TIMEOUT: Duration = Duration::from_secs(5);
+const TIMEOUT: Duration = Duration::from_secs(3);
 
 pub async fn check_url(url_src: UrlSrc, http_client: &HttpClient) -> anyhow::Result<UrlOut> {
     let url = match url_src.url {
