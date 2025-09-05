@@ -1,5 +1,4 @@
 use std::time::Duration;
-use tokio::time;
 use reqwest::{Client as HttpClient, StatusCode};
 use serde::{Serialize, Deserialize};
 use tracing::info;
@@ -19,7 +18,6 @@ pub struct UrlOut {
 }
 
 const TIMEOUT: Duration = Duration::from_secs(5);
-const SLEEP: Duration = Duration::from_millis(100);
 
 pub async fn check_url(url_src: UrlSrc, http_client: &HttpClient) -> anyhow::Result<UrlOut> {
     let url = match url_src.url {
@@ -58,8 +56,6 @@ pub async fn check_url(url_src: UrlSrc, http_client: &HttpClient) -> anyhow::Res
             }
         }
 
-        time::sleep(SLEEP).await;
-
         info!("checking {}", url);
         if let Ok(res) = http_client.get(&url).timeout(TIMEOUT).send().await {
             if res.status() == StatusCode::OK {
@@ -72,8 +68,6 @@ pub async fn check_url(url_src: UrlSrc, http_client: &HttpClient) -> anyhow::Res
             }
         }
     }
-
-    time::sleep(SLEEP).await;
 
     Ok(UrlOut{
         src: url_src.src,

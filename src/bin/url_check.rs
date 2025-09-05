@@ -6,7 +6,7 @@ use tokio::fs;
 use tracing::info;
 use kenja_spider::url::*;
 
-async fn url_check_mongo(
+async fn url_check(
     http_client: HttpClient,
     src_cl: mongodb::Collection<UrlSrc>
 ) -> anyhow::Result<()> {
@@ -58,5 +58,5 @@ async fn main() -> anyhow::Result<()> {
     let src_cl = src_db.collection::<UrlSrc>(&env::var("URL_SRC_CL")?);
     let http_client = HttpClient::new();
 
-    url_check_mongo(http_client, src_cl).await
+    url_check(http_client, src_cl).await
 }
