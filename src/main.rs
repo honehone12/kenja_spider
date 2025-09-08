@@ -20,7 +20,7 @@ async fn main() -> anyhow::Result<()> {
     let params = InitParams{ 
         mongo_uri: &mongo_uri, 
         web_driver_uri: "http://localhost:4444", 
-        img_root: &env::var("IMG_ROOT")? 
+        image_root: &env::var("IMG_ROOT")? 
     };
     let spider = Spider::new(params).await?;
 

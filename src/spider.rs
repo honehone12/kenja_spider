@@ -16,16 +16,16 @@ const MAX_W: u32 = 256;
 const MAX_H: u32 = 512;
 
 pub struct Spider<'a> {
-    mongo_client: MongoClient,
-    http_client: HttpClient,
-    web_driver_client: WebDriverClient,
-    img_root: &'a str
+    mongo: MongoClient,
+    http: HttpClient,
+    web_driver: WebDriverClient,
+    image_root: &'a str
 }
 
 pub struct InitParams<'a> {
     pub mongo_uri: &'a str, 
     pub web_driver_uri: &'a str,
-    pub img_root: &'a str
+    pub image_root: &'a str
 }
 
 pub struct CrawlParams<'a> {
@@ -35,8 +35,10 @@ pub struct CrawlParams<'a> {
     pub target_url: &'a str
 }
 
-struct CrawlOneOutput<'a> {
-    found_urls: Vec<&'a str>
+struct CrawlOneOutput {
+    images: Vec<String>,
+    videos: Vec<String>,
+    links: Vec<String>
 }
 
 struct ImgReqOutput {
@@ -61,15 +63,15 @@ impl<'a> Spider<'a> {
             .connect(params.web_driver_uri).await?;
         web_driver_client.set_ua(UA).await?;
 
-        if !fs::try_exists(params.img_root).await? {
-            fs::create_dir_all(params.img_root).await?;
+        if !fs::try_exists(params.image_root).await? {
+            fs::create_dir_all(params.image_root).await?;
         }
 
         Ok(Self {
-            mongo_client,
-            http_client,
-            web_driver_client,
-            img_root: params.img_root
+            mongo: mongo_client,
+            http: http_client,
+            web_driver: web_driver_client,
+            image_root: params.image_root
         })
     }
 
@@ -106,46 +108,84 @@ impl<'a> Spider<'a> {
         Ok(())
     }
 
+    async fn extract_video(iframe: Element) -> Result<(String, String)> {
+        let Some(src) = iframe.attr("src").await? else {
+            bail!("could not find iframe src");            
+        };
+
+        if !src.starts_with("https://www.youtube.com/embed/") 
+            && !src.starts_with("https://www.youtube-nocookie.com/embed/") 
+        {
+            bail!("could not find video src");
+        }
+
+        let url = Url::parse(&src)?;
+        let Some(path) = url.path_segments() else {
+            bail!("could not find path segments: {src}");
+        };
+        let Some(id) = path.skip(1).next() else {
+            bail!("could not find video id segment");
+        };
+
+        Ok((src, id.to_string()))
+    }
+
+    async fn extract_link(a: Element, current_url: &Url) -> Result<String> {
+        let Some(mut href) = a.attr("href").await? else {
+            bail!("could not find a href");
+        };
+        if !href.starts_with("https:") && !href.starts_with("http:") {
+            let url = current_url.join(&href)?;
+            href = url.to_string()
+        }
+
+        Ok(href)
+    }
+
     pub async fn crawl(&self, params: CrawlParams<'a>) -> Result<()> {
         let mut crawled_map = HashMap::new();
 
         let mut q = VecDeque::new();
-        q.push_back(params.target_url);
+        q.push_back(String::from(params.target_url));
 
         loop {
             let Some(next) = q.pop_front() else {
                 break;
             };
 
-            if let Some(true) = crawled_map.get(next) {
+            if let Some(true) = crawled_map.get(&next) {
                 continue;
             }
 
-            let output = self.crawl_one(next, self.img_root).await?;
+            let output = self.crawl_one(&next).await?;
             
-            q.extend(output.found_urls);
-            crawled_map.insert(params.target_url, true);
+            q.extend(output.links);
+            crawled_map.insert(next, true);
         }
 
         Ok(())
     }
 
-    async fn crawl_one(&self, target_url: &str, img_root: &str) -> Result<CrawlOneOutput<'a>> 
+    async fn crawl_one(&self, target_url: &str) -> Result<CrawlOneOutput> 
     {
         let url = Url::parse(target_url)?;
 
-        self.web_driver_client.goto(target_url).await?;
-        self.web_driver_client.wait().for_url(&url).await?;
+        self.web_driver.goto(target_url).await?;
+        self.web_driver.wait().for_url(&url).await?;
 
-        let scraped_imgs = self.scrape_imgs(&url).await?;
+        let images = self.scrape_imgs(&url).await?;
+        let videos = self.scrape_videos().await?;
+        let links = self.scrape_links(&url).await?;
 
         Ok(CrawlOneOutput {
-            found_urls: vec![]
+            images,
+            videos,
+            links
         })
     }
 
     async fn scrape_imgs(&self, current_url: &Url) -> Result<Vec<String>> {
-        let img_tags = self.web_driver_client.find_all(Locator::Css("img")).await?;
+        let img_tags = self.web_driver.find_all(Locator::Css("img")).await?;
         let mut output = vec![];
 
         for img in img_tags {
@@ -175,13 +215,13 @@ impl<'a> Spider<'a> {
         }
 
         let img_name = Self::rename_img(&src)?;
-        let img_path = format!("{}/{img_name}", self.img_root);
+        let img_path = format!("{}/{img_name}", self.image_root);
         if fs::try_exists(&img_path).await? {
             return Ok(None);
         } 
 
         let url = current_url.join(&src)?;
-        let res = self.http_client.get(url).send().await?;
+        let res = self.http.get(url).send().await?;
         if res.status() != StatusCode::OK {
             bail!("failed to fetch image [{}] {src}", res.status());
         }
@@ -192,5 +232,43 @@ impl<'a> Spider<'a> {
             img_path, 
             body 
         }))
+    }
+
+    async fn scrape_videos(&self) -> Result<Vec<String>> {
+        let iframes = self.web_driver.find_all(Locator::Css("iframe")).await?;
+        let mut output = vec![];
+
+        for iframe in iframes {
+            let (_, id) = match Self::extract_video(iframe).await {
+                Ok(o) => o,
+                Err(e) => {
+                    warn!("{e}");
+                    continue;
+                }
+            };
+
+            output.push(id);
+        }
+        
+        Ok(output)
+    }
+
+    async fn scrape_links(&self, current_url: &Url) -> Result<Vec<String>> {
+        let links = self.web_driver.find_all(Locator::Css("a")).await?;
+        let mut output = vec![];
+
+        for link in links {
+            let src = match Self::extract_link(link, current_url).await {
+                Ok(s) => s,
+                Err(e) => {
+                    warn!("{e}");
+                    continue;
+                }
+            };
+
+            output.push(src);
+        }
+
+        Ok(output)
     }
 }
