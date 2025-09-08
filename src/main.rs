@@ -1,6 +1,6 @@
 use std::env;
 use clap::Parser;
-use kenja_spider::spider::{Spider, SpiderParams};
+use kenja_spider::spider::{CrawlParams, InitParams, Spider};
 
 #[derive(Parser)]
 struct Args {
@@ -17,10 +17,14 @@ async fn main() -> anyhow::Result<()> {
 
     let args = Args::parse();
     let mongo_uri = env::var("MONGO_URI")?;
+    let params = InitParams{ 
+        mongo_uri: &mongo_uri, 
+        web_driver_uri: "http://localhost:4444", 
+        img_root: &env::var("IMG_ROOT")? 
+    };
+    let spider = Spider::new(params).await?;
 
-    let spider = Spider::new(&mongo_uri, "http://localhost:4444").await?;
-
-    let params = SpiderParams { 
+    let params = CrawlParams { 
         mongo_db: &env::var("SPIDER_DB")?, 
         mongo_cl: &env::var("SPIDER_CL")?, 
         target_id: args.id, 
