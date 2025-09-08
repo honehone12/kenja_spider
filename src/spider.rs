@@ -1,6 +1,6 @@
-use std::{collections::{HashMap, VecDeque}, io::Cursor};
+use std::{collections::{HashMap, VecDeque}, io::Cursor, time::Duration};
 use image::{GenericImageView, ImageReader};
-use tokio::fs;
+use tokio::{fs, time};
 use mongodb::Client as MongoClient;
 use reqwest::Client as HttpClient;
 use fantoccini::{
@@ -21,6 +21,7 @@ use crate::documents::SpiderOutput;
 const UA: &str = "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:141.0) Gecko/20100101 Firefox/141.0";
 const MAX_W: u32 = 256;
 const MAX_H: u32 = 512;
+const INTERVAL: Duration = Duration::from_secs(1);
 
 pub struct Spider<'a> {
     mongo: MongoClient,
@@ -181,6 +182,8 @@ impl<'a> Spider<'a> {
             output.videos.append(&mut out.videos);
             q.extend(out.links);
             crawled_map.insert(next, true);
+            
+            time::sleep(INTERVAL).await;
         }
 
         let cl = self.mongo.database(params.mongo_db)
