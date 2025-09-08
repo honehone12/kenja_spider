@@ -115,7 +115,7 @@ impl<'a> Spider<'a> {
         Ok(())
     }
 
-    async fn extract_video(iframe: Element) -> Result<(String, String)> {
+    async fn extract_video(iframe: Element) -> Result<Option<String>> {
         let Some(src) = iframe.attr("src").await? else {
             bail!("could not find iframe src");            
         };
@@ -123,7 +123,7 @@ impl<'a> Spider<'a> {
         if !src.starts_with("https://www.youtube.com/embed/") 
             && !src.starts_with("https://www.youtube-nocookie.com/embed/") 
         {
-            bail!("could not find video src");
+            return Ok(None);
         }
 
         let url = Url::parse(&src)?;
@@ -134,19 +134,25 @@ impl<'a> Spider<'a> {
             bail!("could not find video id segment");
         };
 
-        Ok((src, id.to_string()))
+        Ok(Some(id.to_string()))
     }
 
-    async fn extract_link(a: Element, current_url: &Url) -> Result<String> {
+    async fn extract_link(a: Element, current_url: &Url) -> Result<Option<String>> {
         let Some(mut href) = a.attr("href").await? else {
             bail!("could not find a href");
         };
-        if !href.starts_with("https:") && !href.starts_with("http:") {
-            let url = current_url.join(&href)?;
-            href = url.to_string()
+
+        if href.starts_with("https:") || href.starts_with("http:") {
+            return Ok(Some(href));
         }
 
-        Ok(href)
+        if !href.contains(':') {
+            let url = current_url.join(&href)?;
+            href = url.to_string();
+            return Ok(Some(href));
+        }
+
+        Ok(None)
     }
 
     pub async fn crawl(&self, params: CrawlParams<'a>) -> Result<()> {
@@ -229,7 +235,7 @@ impl<'a> Spider<'a> {
         };
 
         if !Self::is_supported_file(&src) {
-            bail!("unsupported file");
+            return Ok(None)
         }
 
         let img_name = Self::rename_img(&src)?;
@@ -257,12 +263,13 @@ impl<'a> Spider<'a> {
         let mut output = vec![];
 
         for iframe in iframes {
-            let (_, id) = match Self::extract_video(iframe).await {
-                Ok(o) => o,
+            let id = match Self::extract_video(iframe).await {
                 Err(e) => {
                     warn!("{e}");
                     continue;
-                }
+                },
+                Ok(None) => continue,
+                Ok(Some(s)) => s
             };
 
             output.push(id);
@@ -272,19 +279,33 @@ impl<'a> Spider<'a> {
     }
 
     async fn scrape_links(&self, current_url: &Url) -> Result<Vec<String>> {
-        let links = self.web_driver.find_all(Locator::Css("a")).await?;
+        let atags = self.web_driver.find_all(Locator::Css("a")).await?;
         let mut output = vec![];
+        let Some(domain) = current_url.domain() else {
+            bail!("could not find domain");
+        };
 
-        for link in links {
-            let src = match Self::extract_link(link, current_url).await {
-                Ok(s) => s,
+        for a in atags {
+            let link = match Self::extract_link(a, current_url).await {
                 Err(e) => {
                     warn!("{e}");
                     continue;
-                }
+                },
+                Ok(None) => continue,
+                Ok(Some(s)) => s
             };
 
-            output.push(src);
+            match Url::parse(&link) {
+                Ok(url) => {
+                    match url.domain() {
+                        Some(d) if d == domain => (),
+                        _ => continue
+                    }
+                }
+                _ => continue
+            };
+
+            output.push(link);
         }
 
         Ok(output)
