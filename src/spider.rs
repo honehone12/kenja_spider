@@ -3,13 +3,20 @@ use image::{GenericImageView, ImageReader};
 use tokio::fs;
 use mongodb::Client as MongoClient;
 use reqwest::Client as HttpClient;
-use fantoccini::{elements::Element, wd::Locator, Client as WebDriverClient, ClientBuilder};
+use fantoccini::{
+    elements::Element, 
+    wd::Locator, 
+    Client as WebDriverClient, 
+    ClientBuilder
+};
 use serde_json::{Map, json};
 use bytes::Bytes;
 use tracing::warn;
 use url::Url;
 use http::StatusCode;
 use anyhow::{Result, bail};
+
+use crate::documents::SpiderOutput;
 
 const UA: &str = "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:141.0) Gecko/20100101 Firefox/141.0";
 const MAX_W: u32 = 256;
@@ -20,7 +27,7 @@ pub struct Spider<'a> {
     http: HttpClient,
     web_driver: WebDriverClient,
     image_root: &'a str
-}
+} 
 
 pub struct InitParams<'a> {
     pub mongo_uri: &'a str, 
@@ -144,9 +151,15 @@ impl<'a> Spider<'a> {
 
     pub async fn crawl(&self, params: CrawlParams<'a>) -> Result<()> {
         let mut crawled_map = HashMap::new();
+        let mut output = SpiderOutput{
+            mal_id: params.target_id,
+            url: params.target_url.to_string(),
+            images: vec![],
+            videos: vec![],
+        };
 
         let mut q = VecDeque::new();
-        q.push_back(String::from(params.target_url));
+        q.push_back(params.target_url.to_string());
 
         loop {
             let Some(next) = q.pop_front() else {
@@ -157,11 +170,16 @@ impl<'a> Spider<'a> {
                 continue;
             }
 
-            let output = self.crawl_one(&next).await?;
-            
-            q.extend(output.links);
+            let mut out = self.crawl_one(&next).await?;
+            output.images.append(&mut out.images);
+            output.videos.append(&mut out.videos);
+            q.extend(out.links);
             crawled_map.insert(next, true);
         }
+
+        let cl = self.mongo.database(params.mongo_db)
+            .collection::<SpiderOutput>(params.mongo_cl);
+        cl.insert_one(&output).await?;
 
         Ok(())
     }
