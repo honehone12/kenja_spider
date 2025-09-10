@@ -15,12 +15,7 @@ use tracing::warn;
 use url::Url;
 use http::StatusCode;
 use anyhow::{Result, bail};
-
 use crate::documents::SpiderOutput;
-
-const UA: &str = "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:141.0) Gecko/20100101 Firefox/141.0";
-const MAX_W: u32 = 256;
-const MAX_H: u32 = 512;
 
 pub struct Spider<'a> {
     mongo: MongoClient,
@@ -32,6 +27,7 @@ pub struct Spider<'a> {
 pub struct InitParams<'a> {
     pub mongo_uri: &'a str, 
     pub web_driver_uri: &'a str,
+    pub user_agent: &'a str,
     pub image_root: &'a str
 }
 
@@ -40,7 +36,14 @@ pub struct CrawlParams<'a> {
     pub mongo_cl: &'a str,
     pub target_id: i64,
     pub target_url: &'a str,
+    pub size: Size,
     pub interval: Duration
+}
+
+#[derive(Clone, Copy)]
+pub struct Size {
+    pub w: u32,
+    pub h: u32
 }
 
 struct CrawlOneOutput {
@@ -58,7 +61,7 @@ struct ImgReqOutput {
 impl<'a> Spider<'a> {
     pub async fn new(params: InitParams<'a>) -> Result<Self> {
         let mongo_client = MongoClient::with_uri_str(params.mongo_uri).await?;
-        let http_client = HttpClient::builder().user_agent(UA).build()?;
+        let http_client = HttpClient::builder().user_agent(params.user_agent).build()?;
         
         let mut cap = Map::new();
         cap.insert("moz:firefoxOptions".to_string(), json!({
@@ -69,7 +72,7 @@ impl<'a> Spider<'a> {
         let web_driver_client = ClientBuilder::native()
             .capabilities(cap)
             .connect(params.web_driver_uri).await?;
-        web_driver_client.set_ua(UA).await?;
+        web_driver_client.set_ua(params.user_agent).await?;
 
         if !fs::try_exists(params.image_root).await? {
             fs::create_dir_all(params.image_root).await?;
@@ -103,12 +106,12 @@ impl<'a> Spider<'a> {
         Ok(hashed_name)
     }
 
-    fn write_resized_img(img_raw: Bytes, path: &str) -> Result<()> {
+    fn write_resized_img(img_raw: Bytes, size: Size, path: &str) -> Result<()> {
         let cursor = Cursor::new(img_raw.to_vec());
         let mut img = ImageReader::new(cursor).decode()?;
         let (w, h) = img.dimensions();
-        if w > MAX_W || h > MAX_H {
-            img = img.thumbnail(MAX_W, MAX_H);
+        if w > size.w || h > size.h {
+            img = img.thumbnail(size.w, size.h);
         }
 
         img.save(path)?;
@@ -177,7 +180,7 @@ impl<'a> Spider<'a> {
                 continue;
             }
 
-            let mut out = self.crawl_one(&next).await?;
+            let mut out = self.crawl_one(&next, params.size).await?;
             output.images.append(&mut out.images);
             output.videos.append(&mut out.videos);
             q.extend(out.links);
@@ -193,14 +196,14 @@ impl<'a> Spider<'a> {
         Ok(())
     }
 
-    async fn crawl_one(&self, target_url: &str) -> Result<CrawlOneOutput> 
+    async fn crawl_one(&self, target_url: &str, size: Size) -> Result<CrawlOneOutput> 
     {
         let url = Url::parse(target_url)?;
 
         self.web_driver.goto(target_url).await?;
         self.web_driver.wait().for_url(&url).await?;
 
-        let images = self.scrape_imgs(&url).await?;
+        let images = self.scrape_imgs(&url, size).await?;
         let videos = self.scrape_videos().await?;
         let links = self.scrape_links(&url).await?;
 
@@ -211,7 +214,7 @@ impl<'a> Spider<'a> {
         })
     }
 
-    async fn scrape_imgs(&self, current_url: &Url) -> Result<Vec<String>> {
+    async fn scrape_imgs(&self, current_url: &Url, size: Size) -> Result<Vec<String>> {
         let img_tags = self.web_driver.find_all(Locator::Css("img")).await?;
         let mut output = vec![];
 
@@ -225,7 +228,7 @@ impl<'a> Spider<'a> {
                 Ok(Some(o)) => o
             };
 
-            Self::write_resized_img(img_out.body, &img_out.img_path)?;
+            Self::write_resized_img(img_out.body, size, &img_out.img_path)?;
             output.push(img_out.img_name);
         }
 
