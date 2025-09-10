@@ -1,4 +1,4 @@
-use std::env;
+use std::{env, time::Duration};
 use clap::Parser;
 use kenja_spider::spider::{CrawlParams, InitParams, Spider};
 
@@ -7,7 +7,9 @@ struct Args {
     #[arg(long)]
     id: i64,
     #[arg(long)]
-    url: String
+    url: String,
+    #[arg(long, default_value_t = 1)]
+    interval_sec: u64
 }
 
 #[tokio::main]
@@ -28,7 +30,8 @@ async fn main() -> anyhow::Result<()> {
         mongo_db: &env::var("SPIDER_DB")?, 
         mongo_cl: &env::var("SPIDER_CL")?, 
         target_id: args.id, 
-        target_url: &args.url 
+        target_url: &args.url,
+        interval: Duration::from_secs(args.interval_sec) 
     };
     spider.crawl(params).await?;
 

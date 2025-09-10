@@ -24,9 +24,7 @@ async fn url_check(
         } else if out.http.is_some() {
             http_out.push(out);
         } else {
-            if !out.original.is_empty() {
-                unknown_out.push(out);
-            }
+            unknown_out.push(out);
         }
     }
 

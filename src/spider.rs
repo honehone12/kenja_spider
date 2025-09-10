@@ -21,7 +21,6 @@ use crate::documents::SpiderOutput;
 const UA: &str = "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:141.0) Gecko/20100101 Firefox/141.0";
 const MAX_W: u32 = 256;
 const MAX_H: u32 = 512;
-const INTERVAL: Duration = Duration::from_secs(1);
 
 pub struct Spider<'a> {
     mongo: MongoClient,
@@ -40,7 +39,8 @@ pub struct CrawlParams<'a> {
     pub mongo_db: &'a str,
     pub mongo_cl: &'a str,
     pub target_id: i64,
-    pub target_url: &'a str
+    pub target_url: &'a str,
+    pub interval: Duration
 }
 
 struct CrawlOneOutput {
@@ -183,7 +183,7 @@ impl<'a> Spider<'a> {
             q.extend(out.links);
             crawled_map.insert(next, true);
             
-            time::sleep(INTERVAL).await;
+            time::sleep(params.interval).await;
         }
 
         let cl = self.mongo.database(params.mongo_db)
