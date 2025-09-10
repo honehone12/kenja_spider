@@ -15,7 +15,7 @@ use tracing::warn;
 use url::Url;
 use http::StatusCode;
 use anyhow::{Result, bail};
-use crate::documents::SpiderOutput;
+use crate::documents::{Size, SpiderOutput, UrlSrc};
 
 pub struct Spider<'a> {
     mongo: MongoClient,
@@ -34,16 +34,9 @@ pub struct InitParams<'a> {
 pub struct CrawlParams<'a> {
     pub mongo_db: &'a str,
     pub mongo_cl: &'a str,
-    pub target_id: i64,
-    pub target_url: &'a str,
+    pub target_list: Vec<UrlSrc>,
     pub size: Size,
     pub interval: Duration
-}
-
-#[derive(Clone, Copy)]
-pub struct Size {
-    pub w: u32,
-    pub h: u32
 }
 
 struct CrawlOneOutput {
@@ -160,16 +153,34 @@ impl<'a> Spider<'a> {
     }
 
     pub async fn crawl(&self, params: CrawlParams<'a>) -> Result<()> {
+        let cl = self.mongo.database(params.mongo_db)
+            .collection::<SpiderOutput>(params.mongo_cl);
+
+        for target in params.target_list {
+            let output = self.crawl_target(target, params.size, params.interval).await?;
+            cl.insert_one(&output).await?;
+        }
+
+        Ok(())
+    }
+
+    async fn crawl_target(
+        &self, 
+        target: UrlSrc, 
+        size: Size,
+        interval: Duration
+    ) -> Result<SpiderOutput> {
         let mut crawled_map = HashMap::new();
         let mut output = SpiderOutput{
-            mal_id: params.target_id,
-            url: params.target_url.to_string(),
+            mal_id: target.mal_id,
+            url: target.url.clone(),
             images: vec![],
             videos: vec![],
+            parent: target.parent
         };
 
         let mut q = VecDeque::new();
-        q.push_back(params.target_url.to_string());
+        q.push_back(target.url);
 
         loop {
             let Some(next) = q.pop_front() else {
@@ -180,20 +191,16 @@ impl<'a> Spider<'a> {
                 continue;
             }
 
-            let mut out = self.crawl_one(&next, params.size).await?;
+            let mut out = self.crawl_one(&next, size).await?;
             output.images.append(&mut out.images);
             output.videos.append(&mut out.videos);
             q.extend(out.links);
             crawled_map.insert(next, true);
             
-            time::sleep(params.interval).await;
+            time::sleep(interval).await;
         }
 
-        let cl = self.mongo.database(params.mongo_db)
-            .collection::<SpiderOutput>(params.mongo_cl);
-        cl.insert_one(&output).await?;
-
-        Ok(())
+        Ok(output)
     }
 
     async fn crawl_one(&self, target_url: &str, size: Size) -> Result<CrawlOneOutput> 

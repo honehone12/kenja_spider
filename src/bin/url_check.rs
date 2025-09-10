@@ -4,7 +4,7 @@ use mongodb::{bson::doc, Client as MongoClient};
 use reqwest::Client as HttpClient;
 use tokio::fs;
 use tracing::info;
-use kenja_spider::url::*;
+use kenja_spider::{url::check_url, documents::UrlSrc};
 
 async fn url_check(
     http_client: HttpClient,

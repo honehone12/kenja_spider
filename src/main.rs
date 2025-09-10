@@ -1,13 +1,15 @@
 use std::{env, time::Duration};
+use tokio::fs;
 use clap::Parser;
-use kenja_spider::spider::{CrawlParams, InitParams, Size, Spider};
+use kenja_spider::{
+    spider::{CrawlParams, InitParams, Spider}, 
+    documents::{Size, UrlSrc}
+};
 
 #[derive(Parser)]
 struct Args {
     #[arg(long)]
-    id: i64,
-    #[arg(long)]
-    url: String,
+    list: String,
     #[arg(long, default_value_t = 256)]
     width: u32,
     #[arg(long, default_value_t = 512)]
@@ -20,8 +22,10 @@ struct Args {
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt().init();
     dotenvy::dotenv()?;
-
     let args = Args::parse();
+    let json = fs::read_to_string(args.list).await?;
+    let target_list = serde_json::from_str::<Vec<UrlSrc>>(&json)?;
+
     let mongo_uri = env::var("MONGO_URI")?;
     let params = InitParams{ 
         mongo_uri: &mongo_uri, 
@@ -34,8 +38,7 @@ async fn main() -> anyhow::Result<()> {
     let params = CrawlParams { 
         mongo_db: &env::var("SPIDER_DB")?, 
         mongo_cl: &env::var("SPIDER_CL")?, 
-        target_id: args.id, 
-        target_url: &args.url,
+        target_list,
         size: Size{
             w: args.width,
             h: args.height
