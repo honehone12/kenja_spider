@@ -59,7 +59,7 @@ impl<'a> Spider<'a> {
         let mut cap = Map::new();
         cap.insert("moz:firefoxOptions".to_string(), json!({
             "args": ["-headless"],
-            "log": json!({"level": "error"})
+            // "log": json!({"level": "error"}) // is this working ??
         }));
 
         let web_driver_client = ClientBuilder::native()
