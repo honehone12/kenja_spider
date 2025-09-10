@@ -14,6 +14,8 @@ struct Args {
     width: u32,
     #[arg(long, default_value_t = 512)]
     height: u32,
+    #[arg(long, default_value_t = 5)]
+    timeout_sec: u64,
     #[arg(long, default_value_t = 1)]
     interval_sec: u64
 }
@@ -31,19 +33,20 @@ async fn main() -> anyhow::Result<()> {
         mongo_uri: &mongo_uri, 
         web_driver_uri: "http://localhost:4444",
         user_agent: &env::var("SPIDER_UA")?, 
-        image_root: &env::var("IMG_ROOT")? 
+        image_root: &env::var("IMG_ROOT")?,
+        size: Size{
+            w: args.width,
+            h: args.height
+        },
+        timeout: Duration::from_secs(args.timeout_sec),
+        interval: Duration::from_secs(args.interval_sec) 
     };
     let spider = Spider::new(params).await?;
 
     let params = CrawlParams { 
         mongo_db: &env::var("SPIDER_DB")?, 
         mongo_cl: &env::var("SPIDER_CL")?, 
-        target_list,
-        size: Size{
-            w: args.width,
-            h: args.height
-        },
-        interval: Duration::from_secs(args.interval_sec) 
+        target_list 
     };
     spider.crawl(params).await?;
 
