@@ -155,10 +155,26 @@ impl<'a> Spider<'a> {
     pub async fn crawl(&self, params: CrawlParams<'a>) -> Result<()> {
         let cl = self.mongo.database(params.mongo_db)
             .collection::<SpiderOutput>(params.mongo_cl);
+        let mut domain_map = HashMap::new();
 
         for target in params.target_list {
-            let output = self.crawl_target(target, params.size, params.interval).await?;
+            let Ok(url) = Url::parse(&target.url) else {
+                continue;
+            };
+            let Some(domain) = url.domain() else {
+                continue;
+            };
+            if let Some(true) = domain_map.get(domain) {
+                continue;
+            }
+
+            let output = self.crawl_target(
+                target, 
+                params.size, 
+                params.interval
+            ).await?;
             cl.insert_one(&output).await?;
+            domain_map.insert(domain.to_string(), true);
         }
 
         Ok(())
