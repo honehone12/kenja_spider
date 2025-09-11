@@ -5,7 +5,7 @@ use mongodb::Client as MongoClient;
 use reqwest::Client as HttpClient;
 use fantoccini::{
     elements::Element, 
-    wd::{Locator, /*TimeoutConfiguration*/}, 
+    wd::Locator, 
     Client as WebDriverClient, 
     ClientBuilder
 };
@@ -63,22 +63,12 @@ impl<'a> Spider<'a> {
         let mut cap = Map::new();
         cap.insert("moz:firefoxOptions".to_string(), json!({
             "args": ["-headless"],
-            // "log": json!({"level": "error"}) // is this working ??
-        }));
-        cap.insert("timeouts".to_string(), json!({
-            "implicit": 0,
-            "pageLoad": params.timeout.as_millis(),
-            "script": params.timeout.as_millis()
+            // "log": json!({"level": "error"})
         }));
 
         let web_driver_client = ClientBuilder::native()
             .capabilities(cap)
             .connect(params.web_driver_uri).await?;
-        // web_driver_client.update_timeouts(TimeoutConfiguration::new(
-        //     Some(params.timeout), 
-        //     Some(params.timeout), 
-        //     None
-        // )).await?; // is this working ??
         web_driver_client.set_ua(params.user_agent).await?;
 
         if !fs::try_exists(params.image_root).await? {
@@ -242,7 +232,10 @@ impl<'a> Spider<'a> {
             warn!("{e}");
             return Ok(None);
         }
-        if let Err(e) = self.web_driver.wait().for_url(&url).await {
+        if let Err(e) = self.web_driver.wait()
+            .at_most(self.timeout)
+            .for_url(&url).await 
+        {
             warn!("{e}");
             return Ok(None);
         }
