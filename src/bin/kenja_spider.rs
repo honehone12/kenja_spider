@@ -14,7 +14,7 @@ struct Args {
     width: u32,
     #[arg(long, default_value_t = 512)]
     height: u32,
-    #[arg(long, default_value_t = 5)]
+    #[arg(long, default_value_t = 10)]
     timeout_sec: u64,
     #[arg(long, default_value_t = 1)]
     interval_sec: u64
