@@ -28,9 +28,8 @@ async fn main() -> anyhow::Result<()> {
     let json = fs::read_to_string(args.list).await?;
     let target_list = serde_json::from_str::<Vec<UrlSrc>>(&json)?;
 
-    let mongo_uri = env::var("MONGO_URI")?;
     let params = InitParams{ 
-        mongo_uri: &mongo_uri, 
+        mongo_uri: &env::var("MONGO_URI")?, 
         web_driver_uri: "http://localhost:4444",
         user_agent: &env::var("SPIDER_UA")?, 
         image_root: &env::var("IMG_ROOT")?,
